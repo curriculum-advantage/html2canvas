@@ -3521,6 +3521,45 @@ var textAlign = {
     }
 };
 
+var PAINT_ORDER_LAYER;
+(function (PAINT_ORDER_LAYER) {
+    PAINT_ORDER_LAYER[PAINT_ORDER_LAYER["FILL"] = 0] = "FILL";
+    PAINT_ORDER_LAYER[PAINT_ORDER_LAYER["STROKE"] = 1] = "STROKE";
+    PAINT_ORDER_LAYER[PAINT_ORDER_LAYER["MARKERS"] = 2] = "MARKERS";
+})(PAINT_ORDER_LAYER || (PAINT_ORDER_LAYER = {}));
+var paintOrder = {
+    name: 'paint-order',
+    initialValue: 'normal',
+    prefix: false,
+    type: PropertyDescriptorParsingType.LIST,
+    parse: function (tokens) {
+        var DEFAULT_VALUE = [PAINT_ORDER_LAYER.FILL, PAINT_ORDER_LAYER.STROKE, PAINT_ORDER_LAYER.MARKERS];
+        var layers = [];
+        tokens.filter(isIdentToken).forEach(function (token) {
+            switch (token.value) {
+                case 'stroke':
+                    layers.push(PAINT_ORDER_LAYER.STROKE);
+                    break;
+                case 'fill':
+                    layers.push(PAINT_ORDER_LAYER.FILL);
+                    break;
+                case 'markers':
+                    layers.push(PAINT_ORDER_LAYER.MARKERS);
+                    break;
+            }
+        });
+        DEFAULT_VALUE.forEach(function (value) {
+            if (layers.indexOf(value) === -1) {
+                layers.push(value);
+            }
+        });
+        if (!layers.length || !!window.chrome) {
+            layers = DEFAULT_VALUE;
+        }
+        return layers;
+    }
+};
+
 var POSITION;
 (function (POSITION) {
     POSITION[POSITION["STATIC"] = 0] = "STATIC";
@@ -3689,6 +3728,27 @@ var visibility = {
             default:
                 return VISIBILITY.VISIBLE;
         }
+    }
+};
+
+var webkitTextStrokeColor = {
+    name: "-webkit-text-stroke-color",
+    initialValue: 'currentcolor',
+    prefix: false,
+    type: PropertyDescriptorParsingType.TYPE_VALUE,
+    format: 'color'
+};
+
+var webkitTextStrokeWidth = {
+    name: "-webkit-text-stroke-width",
+    initialValue: '0',
+    type: PropertyDescriptorParsingType.VALUE,
+    prefix: false,
+    parse: function (token) {
+        if (isDimensionToken(token)) {
+            return token.number;
+        }
+        return 0;
     }
 };
 
@@ -4079,6 +4139,7 @@ var CSSParsedDeclaration = /** @class */ (function () {
         this.paddingRight = parse(paddingRight, declaration.paddingRight);
         this.paddingBottom = parse(paddingBottom, declaration.paddingBottom);
         this.paddingLeft = parse(paddingLeft, declaration.paddingLeft);
+        this.paintOrder = parse(paintOrder, declaration.paintOrder);
         this.position = parse(position, declaration.position);
         this.textAlign = parse(textAlign, declaration.textAlign);
         this.textDecorationColor = parse(textDecorationColor, declaration.textDecorationColor || declaration.color);
@@ -4088,6 +4149,8 @@ var CSSParsedDeclaration = /** @class */ (function () {
         this.transform = parse(transform, declaration.transform);
         this.transformOrigin = parse(transformOrigin, declaration.transformOrigin);
         this.visibility = parse(visibility, declaration.visibility);
+        this.webkitTextStrokeColor = parse(webkitTextStrokeColor, declaration.webkitTextStrokeColor);
+        this.webkitTextStrokeWidth = parse(webkitTextStrokeWidth, declaration.webkitTextStrokeWidth);
         this.wordBreak = parse(wordBreak, declaration.wordBreak);
         this.zIndex = parse(zIndex, declaration.zIndex);
     }
@@ -6234,53 +6297,71 @@ var CanvasRenderer = /** @class */ (function () {
     };
     CanvasRenderer.prototype.renderTextNode = function (text, styles) {
         return __awaiter(this, void 0, void 0, function () {
-            var _a, font, fontFamily, fontSize;
+            var _a, font, fontFamily, fontSize, paintOrder;
             var _this = this;
             return __generator(this, function (_b) {
                 _a = this.createFontStyle(styles), font = _a[0], fontFamily = _a[1], fontSize = _a[2];
+                paintOrder = styles.paintOrder;
                 this.ctx.font = font;
                 text.textBounds.forEach(function (text) {
-                    _this.ctx.fillStyle = asString(styles.color);
-                    _this.renderTextWithLetterSpacing(text, styles.letterSpacing);
-                    var textShadows = styles.textShadow;
-                    if (textShadows.length && text.text.trim().length) {
-                        textShadows
-                            .slice(0)
-                            .reverse()
-                            .forEach(function (textShadow) {
-                            _this.ctx.shadowColor = asString(textShadow.color);
-                            _this.ctx.shadowOffsetX = textShadow.offsetX.number * _this.options.scale;
-                            _this.ctx.shadowOffsetY = textShadow.offsetY.number * _this.options.scale;
-                            _this.ctx.shadowBlur = textShadow.blur.number;
-                            _this.ctx.fillText(text.text, text.bounds.left, text.bounds.top + text.bounds.height);
-                        });
-                        _this.ctx.shadowColor = '';
-                        _this.ctx.shadowOffsetX = 0;
-                        _this.ctx.shadowOffsetY = 0;
-                        _this.ctx.shadowBlur = 0;
-                    }
-                    if (styles.textDecorationLine.length) {
-                        _this.ctx.fillStyle = asString(styles.textDecorationColor || styles.color);
-                        styles.textDecorationLine.forEach(function (textDecorationLine) {
-                            switch (textDecorationLine) {
-                                case 1 /* UNDERLINE */:
-                                    // Draws a line at the baseline of the font
-                                    // TODO As some browsers display the line as more than 1px if the font-size is big,
-                                    // need to take that into account both in position and size
-                                    var baseline = _this.fontMetrics.getMetrics(fontFamily, fontSize).baseline;
-                                    _this.ctx.fillRect(text.bounds.left, Math.round(text.bounds.top + baseline), text.bounds.width, 1);
-                                    break;
-                                case 2 /* OVERLINE */:
-                                    _this.ctx.fillRect(text.bounds.left, Math.round(text.bounds.top), text.bounds.width, 1);
-                                    break;
-                                case 3 /* LINE_THROUGH */:
-                                    // TODO try and find exact position for line-through
-                                    var middle = _this.fontMetrics.getMetrics(fontFamily, fontSize).middle;
-                                    _this.ctx.fillRect(text.bounds.left, Math.ceil(text.bounds.top + middle), text.bounds.width, 1);
-                                    break;
-                            }
-                        });
-                    }
+                    paintOrder.forEach(function (paintOrderLayer) {
+                        switch (paintOrderLayer) {
+                            case PAINT_ORDER_LAYER.FILL:
+                                _this.ctx.fillStyle = asString(styles.color);
+                                _this.renderTextWithLetterSpacing(text, styles.letterSpacing);
+                                var textShadows = styles.textShadow;
+                                if (textShadows.length && text.text.trim().length) {
+                                    textShadows
+                                        .slice(0)
+                                        .reverse()
+                                        .forEach(function (textShadow) {
+                                        _this.ctx.shadowColor = asString(textShadow.color);
+                                        _this.ctx.shadowOffsetX = textShadow.offsetX.number * _this.options.scale;
+                                        _this.ctx.shadowOffsetY = textShadow.offsetY.number * _this.options.scale;
+                                        _this.ctx.shadowBlur = textShadow.blur.number;
+                                        _this.ctx.fillText(text.text, text.bounds.left, text.bounds.top + text.bounds.height);
+                                    });
+                                    _this.ctx.shadowColor = '';
+                                    _this.ctx.shadowOffsetX = 0;
+                                    _this.ctx.shadowOffsetY = 0;
+                                    _this.ctx.shadowBlur = 0;
+                                }
+                                if (styles.textDecorationLine.length) {
+                                    _this.ctx.fillStyle = asString(styles.textDecorationColor || styles.color);
+                                    styles.textDecorationLine.forEach(function (textDecorationLine) {
+                                        switch (textDecorationLine) {
+                                            case 1 /* UNDERLINE */:
+                                                // Draws a line at the baseline of the font
+                                                // TODO As some browsers display the line as more than 1px if the font-size is big,
+                                                // need to take that into account both in position and size
+                                                var baseline = _this.fontMetrics.getMetrics(fontFamily, fontSize).baseline;
+                                                _this.ctx.fillRect(text.bounds.left, Math.round(text.bounds.top + baseline), text.bounds.width, 1);
+                                                break;
+                                            case 2 /* OVERLINE */:
+                                                _this.ctx.fillRect(text.bounds.left, Math.round(text.bounds.top), text.bounds.width, 1);
+                                                break;
+                                            case 3 /* LINE_THROUGH */:
+                                                // TODO try and find exact position for line-through
+                                                var middle = _this.fontMetrics.getMetrics(fontFamily, fontSize).middle;
+                                                _this.ctx.fillRect(text.bounds.left, Math.ceil(text.bounds.top + middle), text.bounds.width, 1);
+                                                break;
+                                        }
+                                    });
+                                }
+                                break;
+                            case PAINT_ORDER_LAYER.STROKE:
+                                if (styles.webkitTextStrokeWidth && text.text.trim().length) {
+                                    _this.ctx.strokeStyle = asString(styles.webkitTextStrokeColor);
+                                    _this.ctx.lineWidth = styles.webkitTextStrokeWidth;
+                                    _this.ctx.lineJoin = !!window.chrome ? 'miter' : 'round';
+                                    _this.ctx.strokeText(text.text, text.bounds.left, text.bounds.top + text.bounds.height);
+                                }
+                                _this.ctx.strokeStyle = '';
+                                _this.ctx.lineWidth = 0;
+                                _this.ctx.lineJoin = 'miter';
+                                break;
+                        }
+                    });
                 });
                 return [2 /*return*/];
             });
@@ -6937,6 +7018,21 @@ var loadSerializedSVG$1 = function (svg) {
     });
 };
 
+/**
+ * Credit for the Guid algorithm is from Broofa: https://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid
+ */
+var Guid = /** @class */ (function () {
+    function Guid() {
+    }
+    Guid.generate = function () {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            var r = (Math.random() * 16) | 0, v = c == 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+        });
+    };
+    return Guid;
+}());
+
 var _this = undefined;
 var parseColor$1 = function (value) { return color.parse(Parser.create(value).parseComponentValue()); };
 var html2canvas = function (element, options) {
@@ -6959,7 +7055,7 @@ var renderElement = function (element, opts) { return __awaiter(_this, void 0, v
                 if (!defaultView) {
                     throw new Error("Document is not attached to a Window");
                 }
-                instanceName = (Math.round(Math.random() * 1000) + Date.now()).toString(16);
+                instanceName = Guid.generate();
                 _a = isBodyElement(element) || isHTMLElement(element) ? parseDocumentSize(ownerDocument) : parseBounds(element), width = _a.width, height = _a.height, left = _a.left, top = _a.top;
                 defaultResourceOptions = {
                     allowTaint: false,

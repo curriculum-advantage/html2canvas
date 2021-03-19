@@ -112,5 +112,6 @@
   "license": "MIT",
   "dependencies": {
     "css-line-break": "1.1.1"
-  }
+  },
+  "pre-commit": [ "build" ]
 }
